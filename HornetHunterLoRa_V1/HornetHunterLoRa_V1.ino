@@ -35,9 +35,11 @@ unsigned long lastStepMs = 0;
 
 void setup() {
   Serial.begin(115200);
+
   while (!Serial)
     ;
-
+  
+  
   customSPI->begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_NSS);
 
   // hardware reset
@@ -48,20 +50,30 @@ void setup() {
   delay(100);
 
   // initialize FSK at your freq, bit rate, and a safe “starting” deviation
-  int state = radio.beginFSK(
-    868.0,         // frequency
-    1.2,           // bitrate
-    1.2,           // freq deviation
-    5.0,           // RX bandwidth
-    10,            // preamble length
-    3,             // sync word length
-    { 0xC1,0x94,0xC1}, // a 3-byte sync word
-    RADIOLIB_FSK_SHAPING_NONE,
-    true           // CRC on
-  );
-  if (st != RADIOLIB_ERR_NONE) {
+/*  int state = radio.beginFSK(
+    868.0,  // frequency
+    1.2,    // bitrate
+    5,    // freq deviation
+    125,    //Receiver bandwidth in kHz.
+    10,     // power
+    16,     // Length of FSK preamble in bits.
+    false);
+*/
+
+int state = radio.beginFSK(
+  430.825,  // ← Change from 868.0 to 433.0 MHz
+  4.8, // Bit rate
+  5, // freqDev
+  125, //Receiver bandwidth in kHz
+  10, //Transmission output power in dBm.
+  16, // preambleLength Length of FSK preamble in bits.
+  false);
+
+
+
+  if (state != RADIOLIB_ERR_NONE) {
     Serial.print("FSK init failed, code ");
-    Serial.println(st);
+    Serial.println(state);
     while (true)
       ;
   }
@@ -73,13 +85,13 @@ void setup() {
   //radio.setCrcFiltering(false);
 
   // smoothing
-  //radio.setRSSIConfig(8, 0);
+  radio.setRSSIConfig(8, 0);
 
   // start continuous receive so RSSI register updates
-  st = radio.startReceive();
-  if (st != RADIOLIB_ERR_NONE) {
+  state = radio.startReceive();
+  if (state != RADIOLIB_ERR_NONE) {
     Serial.print("startReceive failed, code ");
-    Serial.println(st);
+    Serial.println(state);
     while (true)
       ;
   }
@@ -97,8 +109,8 @@ void loop() {
     float newBw = RXBW_LIST_KHZ[bwIndex];
 
     // apply new Rx bandwidth
-    //radio.setRxBandwidth(newBw);   // sets receiver bandwidth
-    //radio.setAFCBandwidth(newBw);  // keep AFC in sync
+    radio.setRxBandwidth(newBw);   // sets receiver bandwidth
+    radio.setAFCBandwidth(newBw);  // keep AFC in sync
 
     // recompute freqDev so: freqDev ≤ 200 kHz, freqDev + br/2 ≤ 250 kHz
     float maxDevByBr = 250.0f - (BIT_RATE_KBPS / 2.0f);
@@ -106,8 +118,9 @@ void loop() {
     if (chosenDev > maxDevByBr) { chosenDev = maxDevByBr; }
     if (chosenDev > 200.0f) { chosenDev = 200.0f; }
     if (chosenDev < 0.6f) { chosenDev = 0.6f; }
-  //  radio.setFrequencyDeviation(chosenDev);
-   // radio.startReceive();
+    
+    radio.setFrequencyDeviation(chosenDev);
+    radio.startReceive();
 
     Serial.print("→ Switched to rxBw=");
     Serial.print(newBw, 1);
@@ -118,7 +131,8 @@ void loop() {
 
   // just print the live RSSI every loop
   float rssi = radio.getRSSI();
-  if (rssi > -90) {
+
+  if (rssi > -60) {
     Serial.print("CW RSSI: ");
     Serial.print(rssi, 1);
     Serial.println(" dBm");
